@@ -1,0 +1,7 @@
+name = "moviebay-download"
+main = "download-worker.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Optional: set routes if you want a custom domain
+# routes = [{ pattern = "download.yourdomain.com/*", zone_name = "yourdomain.com" }]
