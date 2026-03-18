@@ -1,22 +1,10 @@
 /**
- * Moviebay Download Rename Proxy — Cloudflare Worker
+ * Moviebay Download / Playback Proxy — Cloudflare Worker
  * ---------------------------------------------------
  * Routes:
- *   GET /?url=<encoded_url>&name=<encoded_filename>
+ *   GET /?url=<encoded_url>&name=<encoded_filename>[&play=1]
  *
- * The worker fetches the video from the origin server and re-streams it
- * with a Content-Disposition header that forces the browser to save the
- * file under the name YOU choose (e.g. "The Dark Knight (2008).mp4").
- *
- * Free tier: 100 000 requests / day — more than enough for a movie site.
- *
- * Deploy steps (see README below):
- *   1. Sign up at https://dash.cloudflare.com (free account)
- *   2. Go to Workers & Pages → Create Worker
- *   3. Paste this entire file into the online editor
- *   4. Click "Deploy"
- *   5. Copy the worker URL (e.g. https://download.YOUR-NAME.workers.dev)
- *   6. Set WORKER_URL in MovieModal.tsx to that URL
+ * Support for both Downloads (forces attachment) and Video Playback (inline + Range requests).
  */
 
 export default {
@@ -31,7 +19,8 @@ export default {
 
         const { searchParams } = new URL(request.url);
         const targetUrl = searchParams.get("url");
-        const filename = searchParams.get("name") || "download.mp4";
+        const filename = searchParams.get("name") || "video.mp4";
+        const isPlay = searchParams.get("play") === "1";
 
         // Basic validation
         if (!targetUrl) {
@@ -41,7 +30,6 @@ export default {
             });
         }
 
-        // Only allow http/https schemes — block file:// etc.
         let parsed;
         try {
             parsed = new URL(targetUrl);
@@ -58,20 +46,28 @@ export default {
             });
         }
 
+        // ── Forward request headers (especially Range for streaming) ───────────
+        const requestHeaders = new Headers();
+        
+        // Pass essential headers through
+        const passHeaders = ["User-Agent", "Accept", "Accept-Language", "Range"];
+        for (const h of passHeaders) {
+            if (request.headers.has(h)) {
+                requestHeaders.set(h, request.headers.get(h));
+            }
+        }
+        
+        if (!requestHeaders.has("User-Agent")) {
+            requestHeaders.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        }
+        requestHeaders.set("Referer", parsed.origin + "/");
+
         // ── Fetch from origin ──────────────────────────────────────────────────
         let originResponse;
         try {
             originResponse = await fetch(targetUrl, {
-                method: "GET",
-                headers: {
-                    // Mimic a real browser so PHP servers don't reject the request
-                    "User-Agent":
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Accept": "video/mp4,video/*;q=0.9,*/*;q=0.8",
-                    "Accept-Language": "en-US,en;q=0.5",
-                    "Referer": parsed.origin + "/",
-                },
+                method: request.method === "HEAD" ? "HEAD" : "GET",
+                headers: requestHeaders,
                 redirect: "follow",
             });
         } catch (err) {
@@ -84,7 +80,7 @@ export default {
             );
         }
 
-        if (!originResponse.ok) {
+        if (!originResponse.ok && originResponse.status !== 206) {
             return new Response(
                 JSON.stringify({ error: `Origin returned ${originResponse.status}` }),
                 {
@@ -94,34 +90,39 @@ export default {
             );
         }
 
-        // ── Re-stream with download headers ───────────────────────────────────
-        const contentType =
-            originResponse.headers.get("content-type") || "video/mp4";
+        // ── Re-stream with appropriate headers ────────────────────────────────
+        const contentType = originResponse.headers.get("content-type") || "video/mp4";
+        const safeFilename = filename.replace(/["\\\r\n]/g, "").slice(0, 200);
 
-        // Sanitise filename for Content-Disposition header
-        const safeFilename = filename
-            .replace(/["\\\r\n]/g, "")  // strip chars illegal in quoted header value
-            .slice(0, 200);             // keep it reasonable length
+        const responseHeaders = new Headers(corsHeaders());
+        responseHeaders.set("Content-Type", contentType);
 
-        const headers = {
-            "Content-Type": contentType,
-            // Forces browser to download rather than play inline
-            "Content-Disposition": `attachment; filename="${safeFilename}"`,
-            // Pass through content-length if present (helps progress bars)
-            ...(originResponse.headers.get("content-length")
-                ? { "Content-Length": originResponse.headers.get("content-length") }
-                : {}),
-            ...corsHeaders(),
-        };
+        if (isPlay) {
+            responseHeaders.set("Content-Disposition", `inline; filename="${safeFilename}"`);
+        } else {
+            responseHeaders.set("Content-Disposition", `attachment; filename="${safeFilename}"`);
+        }
 
-        return new Response(originResponse.body, { status: 200, headers });
+        // Pass through streaming/range headers
+        const headersToKeep = ["Content-Length", "Content-Range", "Accept-Ranges"];
+        for (const h of headersToKeep) {
+            if (originResponse.headers.has(h)) {
+                responseHeaders.set(h, originResponse.headers.get(h));
+            }
+        }
+
+        return new Response(originResponse.body, { 
+            status: originResponse.status, 
+            headers: responseHeaders 
+        });
     },
 };
 
 function corsHeaders() {
     return {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Range",
+        "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
     };
 }
