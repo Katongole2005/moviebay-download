@@ -91,25 +91,46 @@ export default {
         }
 
         // ── Re-stream with appropriate headers ────────────────────────────────
-        const contentType = originResponse.headers.get("content-type") || "video/mp4";
+        const isDownload = searchParams.get("download") === "1";
+        const forcePlay = isPlay && !isDownload;
+        
+        let contentType = originResponse.headers.get("content-type");
+        // Force video/mp4 for common video extensions if missing or generic
+        if (targetUrl.toLowerCase().endsWith(".mp4") || targetUrl.toLowerCase().endsWith(".m4v")) {
+            if (!contentType || contentType === "application/octet-stream" || contentType === "text/plain") {
+                contentType = "video/mp4";
+            }
+        }
+        if (!contentType) contentType = "video/mp4";
+
         const safeFilename = filename.replace(/["\\\r\n]/g, "").slice(0, 200);
-
         const responseHeaders = new Headers(corsHeaders());
-        responseHeaders.set("Content-Type", contentType);
 
-        if (isPlay) {
+        responseHeaders.set("Content-Type", contentType);
+        
+        // Ensure we handle Range requests properly for streaming
+        if (originResponse.status === 206) {
+            responseHeaders.set("Accept-Ranges", "bytes");
+        }
+
+        if (forcePlay) {
+            // For streaming, use 'inline'. filename is optional but can be included.
             responseHeaders.set("Content-Disposition", `inline; filename="${safeFilename}"`);
         } else {
+            // For specifically requested downloads, force 'attachment'
             responseHeaders.set("Content-Disposition", `attachment; filename="${safeFilename}"`);
         }
 
-        // Pass through streaming/range headers
-        const headersToKeep = ["Content-Length", "Content-Range", "Accept-Ranges"];
+        // Pass through essential streaming/range headers from origin
+        const headersToKeep = ["Content-Length", "Content-Range", "Accept-Ranges", "Last-Modified", "ETag"];
         for (const h of headersToKeep) {
             if (originResponse.headers.has(h)) {
                 responseHeaders.set(h, originResponse.headers.get(h));
             }
         }
+
+        // Security headers
+        responseHeaders.set("X-Content-Type-Options", "nosniff");
 
         return new Response(originResponse.body, { 
             status: originResponse.status, 
