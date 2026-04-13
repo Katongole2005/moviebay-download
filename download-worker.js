@@ -46,6 +46,8 @@ export default {
             });
         }
 
+        const isSizeRequest = searchParams.get("size") === "1";
+
         // ── Forward request headers (especially Range for streaming) ───────────
         const requestHeaders = new Headers();
         
@@ -66,7 +68,7 @@ export default {
         let originResponse;
         try {
             originResponse = await fetch(targetUrl, {
-                method: request.method === "HEAD" ? "HEAD" : "GET",
+                method: (request.method === "HEAD" || isSizeRequest) ? "HEAD" : "GET",
                 headers: requestHeaders,
                 redirect: "follow",
             });
@@ -76,6 +78,19 @@ export default {
                 {
                     status: 502,
                     headers: { "Content-Type": "application/json", ...corsHeaders() },
+                }
+            );
+        }
+
+        if (isSizeRequest) {
+            return new Response(
+                JSON.stringify({
+                    size: originResponse.headers.get("Content-Length") || "unknown",
+                    type: originResponse.headers.get("Content-Type") || "unknown"
+                }),
+                {
+                    status: 200,
+                    headers: { "Content-Type": "application/json", ...corsHeaders() }
                 }
             );
         }
