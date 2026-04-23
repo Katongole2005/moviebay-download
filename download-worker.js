@@ -123,10 +123,11 @@ export default {
 
         responseHeaders.set("Content-Type", contentType);
         
-        // Ensure we handle Range requests properly for streaming
-        if (originResponse.status === 206) {
-            responseHeaders.set("Accept-Ranges", "bytes");
-        }
+        // Always advertise byte-range support so the browser can make range
+        // requests for any position in the file. Without this on the initial
+        // 200 response, Chrome downloads the entire video file sequentially
+        // from byte 0, filling its buffer linearly until the tab crashes.
+        responseHeaders.set("Accept-Ranges", "bytes");
 
         if (forcePlay) {
             // For streaming, use 'inline'. filename is optional but can be included.
