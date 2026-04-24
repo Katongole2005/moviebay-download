@@ -103,7 +103,10 @@ export default {
         if (!requestHeaders.has("User-Agent")) {
             requestHeaders.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         }
-        requestHeaders.set("Referer", parsed.origin + "/");
+
+        // Try to be more convincing to origin servers
+        requestHeaders.set("Referer", "https://mobifliks.com/");
+        requestHeaders.set("Origin", "https://mobifliks.com");
 
         // ── Fetch from origin ──────────────────────────────────────────────────
         let originResponse;
@@ -115,7 +118,7 @@ export default {
             });
         } catch (err) {
             return new Response(
-                JSON.stringify({ error: "Failed to reach origin", detail: String(err) }),
+                JSON.stringify({ error: "Worker failed to connect to movie server", detail: String(err) }),
                 {
                     status: 502,
                     headers: { "Content-Type": "application/json", ...corsHeaders() },
