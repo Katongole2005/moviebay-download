@@ -53,6 +53,16 @@ export default {
 
             targetUrl = decrypted.u;
             if (decrypted.t) filename = decrypted.t;
+
+            // Handle spaces/special chars in the target URL
+            if (targetUrl && (targetUrl.includes(" ") || /[^a-z0-9:/?&.=%-]/i.test(targetUrl))) {
+                try {
+                    const urlObj = new URL(targetUrl);
+                    targetUrl = urlObj.toString();
+                } catch (e) {
+                    targetUrl = encodeURI(targetUrl).replace(/%25/g, "%");
+                }
+            }
         }
 
         // Basic validation
@@ -141,13 +151,20 @@ export default {
         const forcePlay = isPlay && !isDownload;
         
         let contentType = originResponse.headers.get("content-type");
-        // Force video/mp4 for common video extensions if missing or generic
-        if (targetUrl.toLowerCase().endsWith(".mp4") || targetUrl.toLowerCase().endsWith(".m4v")) {
-            if (!contentType || contentType === "application/octet-stream" || contentType === "text/plain") {
-                contentType = "video/mp4";
-            }
+        const lowerUrl = targetUrl.toLowerCase();
+        
+        // Smarter Content-Type detection
+        if (lowerUrl.endsWith(".mp4") || lowerUrl.endsWith(".m4v")) {
+            contentType = "video/mp4";
+        } else if (lowerUrl.endsWith(".mkv")) {
+            contentType = "video/x-matroska";
+        } else if (lowerUrl.endsWith(".webm")) {
+            contentType = "video/webm";
+        } else if (lowerUrl.endsWith(".mov")) {
+            contentType = "video/quicktime";
+        } else if (!contentType || contentType === "application/octet-stream" || contentType === "text/plain") {
+            contentType = "video/mp4"; // Default fallback
         }
-        if (!contentType) contentType = "video/mp4";
 
         const safeFilename = filename.replace(/["\\\r\n]/g, "").slice(0, 200);
         const responseHeaders = new Headers(corsHeaders());
