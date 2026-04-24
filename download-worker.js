@@ -190,8 +190,11 @@ async function decryptToken(token, secret) {
         
         if (!ivB64 || !encB64) return null;
 
-        const iv = Uint8Array.from(atob(ivB64), c => c.charCodeAt(0));
-        const encrypted = Uint8Array.from(atob(encB64), c => c.charCodeAt(0));
+        // Restore padding if it was stripped
+        const addPadding = (str) => str.padEnd(str.length + (4 - str.length % 4) % 4, '=');
+
+        const iv = Uint8Array.from(atob(addPadding(ivB64)), c => c.charCodeAt(0));
+        const encrypted = Uint8Array.from(atob(addPadding(encB64)), c => c.charCodeAt(0));
 
         const encoder = new TextEncoder();
         const keyBytes = encoder.encode(secret.padEnd(32, '0').slice(0, 32));
