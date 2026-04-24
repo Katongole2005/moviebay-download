@@ -2,7 +2,8 @@
  * Moviebay Download / Playback Proxy — Cloudflare Worker
  * ---------------------------------------------------
  * Routes:
- *   GET /?url=<encoded_url>&name=<encoded_filename>[&play=1]
+ *   GET /?token=<secure_token>[&play=1]
+ *   GET /?url=<encoded_url>&name=<encoded_filename>[&play=1] (Legacy)
  *
  * Support for both Downloads (forces attachment) and Video Playback (inline + Range requests).
  */
@@ -18,13 +19,45 @@ export default {
         }
 
         const { searchParams } = new URL(request.url);
-        const targetUrl = searchParams.get("url");
-        const filename = searchParams.get("name") || "video.mp4";
+        const token = searchParams.get("token");
+        let targetUrl = searchParams.get("url");
+        let filename = searchParams.get("name") || "video.mp4";
         const isPlay = searchParams.get("play") === "1";
+        const isSizeRequest = searchParams.get("size") === "1";
+
+        // ── Secure Token Decryption ──────────────────────────────────────────
+        if (token) {
+            const secret = env.ENCRYPTION_KEY;
+            if (!secret) {
+                return new Response(JSON.stringify({ error: "Encryption key not configured on worker" }), {
+                    status: 500,
+                    headers: { "Content-Type": "application/json", ...corsHeaders() },
+                });
+            }
+
+            const decrypted = await decryptToken(token, secret);
+            if (!decrypted) {
+                return new Response(JSON.stringify({ error: "Invalid or tampered token" }), {
+                    status: 403,
+                    headers: { "Content-Type": "application/json", ...corsHeaders() },
+                });
+            }
+
+            // Expiration Check
+            if (decrypted.e < Date.now()) {
+                return new Response(JSON.stringify({ error: "Link expired" }), {
+                    status: 403,
+                    headers: { "Content-Type": "application/json", ...corsHeaders() },
+                });
+            }
+
+            targetUrl = decrypted.u;
+            if (decrypted.t) filename = decrypted.t;
+        }
 
         // Basic validation
         if (!targetUrl) {
-            return new Response(JSON.stringify({ error: "Missing ?url parameter" }), {
+            return new Response(JSON.stringify({ error: "Missing source URL" }), {
                 status: 400,
                 headers: { "Content-Type": "application/json", ...corsHeaders() },
             });
@@ -34,7 +67,7 @@ export default {
         try {
             parsed = new URL(targetUrl);
         } catch {
-            return new Response(JSON.stringify({ error: "Invalid URL" }), {
+            return new Response(JSON.stringify({ error: "Invalid source URL" }), {
                 status: 400,
                 headers: { "Content-Type": "application/json", ...corsHeaders() },
             });
@@ -45,8 +78,6 @@ export default {
                 headers: { "Content-Type": "application/json", ...corsHeaders() },
             });
         }
-
-        const isSizeRequest = searchParams.get("size") === "1";
 
         // ── Forward request headers (especially Range for streaming) ───────────
         const requestHeaders = new Headers();
@@ -122,18 +153,11 @@ export default {
         const responseHeaders = new Headers(corsHeaders());
 
         responseHeaders.set("Content-Type", contentType);
-        
-        // Always advertise byte-range support so the browser can make range
-        // requests for any position in the file. Without this on the initial
-        // 200 response, Chrome downloads the entire video file sequentially
-        // from byte 0, filling its buffer linearly until the tab crashes.
         responseHeaders.set("Accept-Ranges", "bytes");
 
         if (forcePlay) {
-            // For streaming, use 'inline'. filename is optional but can be included.
             responseHeaders.set("Content-Disposition", `inline; filename="${safeFilename}"`);
         } else {
-            // For specifically requested downloads, force 'attachment'
             responseHeaders.set("Content-Disposition", `attachment; filename="${safeFilename}"`);
         }
 
@@ -154,6 +178,45 @@ export default {
         });
     },
 };
+
+/**
+ * Decrypts the secure AES-GCM token using the shared secret.
+ */
+async function decryptToken(token, secret) {
+    try {
+        // Restore Base64 padding if removed by URL-safe conversion
+        const b64 = token.replace(/-/g, '+').replace(/_/g, '/');
+        const [ivB64, encB64] = b64.split('.');
+        
+        if (!ivB64 || !encB64) return null;
+
+        const iv = Uint8Array.from(atob(ivB64), c => c.charCodeAt(0));
+        const encrypted = Uint8Array.from(atob(encB64), c => c.charCodeAt(0));
+
+        const encoder = new TextEncoder();
+        const keyBytes = encoder.encode(secret.padEnd(32, '0').slice(0, 32));
+        
+        const keyMaterial = await crypto.subtle.importKey(
+            "raw",
+            keyBytes,
+            { name: "AES-GCM" },
+            false,
+            ["decrypt"]
+        );
+
+        const decryptedBuffer = await crypto.subtle.decrypt(
+            { name: "AES-GCM", iv },
+            keyMaterial,
+            encrypted
+        );
+
+        const payload = new TextDecoder().decode(decryptedBuffer);
+        return JSON.parse(payload);
+    } catch (err) {
+        console.error("Decryption failed:", err);
+        return null;
+    }
+}
 
 function corsHeaders() {
     return {
