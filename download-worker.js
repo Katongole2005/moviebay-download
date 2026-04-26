@@ -55,11 +55,14 @@ export default {
             if (decrypted.t) filename = decrypted.t;
 
             // Handle spaces/special chars in the target URL
-            if (targetUrl && (targetUrl.includes(" ") || /[^a-z0-9:/?&.=%-]/i.test(targetUrl))) {
+            if (targetUrl && (targetUrl.includes(" ") || /[^a-z0-9:/?&.=%[\]()-]/i.test(targetUrl))) {
                 try {
-                    const urlObj = new URL(targetUrl);
+                    // Try to fix common encoding issues while preserving existing valid encodings
+                    const decoded = decodeURI(targetUrl);
+                    const urlObj = new URL(decoded);
                     targetUrl = urlObj.toString();
                 } catch (e) {
+                    // Fallback to manual encodeURI if URL constructor fails
                     targetUrl = encodeURI(targetUrl).replace(/%25/g, "%");
                 }
             }
@@ -105,8 +108,17 @@ export default {
         }
 
         // Try to be more convincing to origin servers
-        requestHeaders.set("Referer", "https://mobifliks.com/");
-        requestHeaders.set("Origin", "https://mobifliks.com");
+        try {
+            const originUrl = new URL(targetUrl);
+            const targetOrigin = originUrl.origin;
+            
+            // For BunnyCDN and similar, matching the origin is usually enough
+            requestHeaders.set("Referer", targetOrigin + "/");
+            requestHeaders.set("Origin", targetOrigin);
+        } catch (e) {
+            requestHeaders.set("Referer", "https://mobifliks.com/");
+            requestHeaders.set("Origin", "https://mobifliks.com");
+        }
 
         // ── Fetch from origin ──────────────────────────────────────────────────
         let originResponse;
