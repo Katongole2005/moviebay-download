@@ -56,8 +56,6 @@ export default {
 
         // If it's a cross-origin request (like from an unauthorized site embedding the video),
         // we block it if it doesn't match our allowed domains.
-        // We allow empty referers/origins ONLY if they are playing from a native app or direct link 
-        // (but since you want it to ONLY work on your site, we should strictly require a valid referer/origin).
         if (origin || referer) {
             if (!hasValidOrigin && !hasValidReferer) {
                 return new Response(JSON.stringify({ error: "Hotlinking restricted. Please watch on the official site." }), {
@@ -65,10 +63,9 @@ export default {
                     headers: { "Content-Type": "application/json", ...corsHeaders() },
                 });
             }
-        } else if (isPlay) {
-            // Optional: Block entirely if NO referer is present and it's a playback request
-            // Some legitimate users have extensions that block referers, but this is the trade-off for strict protection.
-            return new Response(JSON.stringify({ error: "Direct playback disabled. Please watch on the official site." }), {
+        } else {
+            // Strictly block requests without an origin or referer (prevents direct link sharing even for downloads).
+            return new Response(JSON.stringify({ error: "Direct access disabled. Please access via the official site." }), {
                 status: 403,
                 headers: { "Content-Type": "application/json", ...corsHeaders() },
             });
