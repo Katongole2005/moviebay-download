@@ -91,14 +91,7 @@ export default {
         }
 
         // ── Secure Token Decryption ──────────────────────────────────────────
-        if (!isSizeRequest) {
-            if (!token) {
-                return new Response(JSON.stringify({ error: "Missing secure token. Raw URL requests are not allowed." }), {
-                    status: 403,
-                    headers: { "Content-Type": "application/json", ...corsHeaders() },
-                });
-            }
-
+        if (token) {
             const secret = env.ENCRYPTION_KEY;
             if (!secret) {
                 return new Response(JSON.stringify({ error: "Encryption key not configured on worker" }), {
@@ -125,6 +118,15 @@ export default {
 
             targetUrl = decrypted.u;
             if (decrypted.t) filename = decrypted.t;
+        } else {
+            // No token provided.
+            // If it is NOT a size request, strictly block raw URL access.
+            if (!isSizeRequest) {
+                return new Response(JSON.stringify({ error: "Missing secure token. Raw URL requests are not allowed." }), {
+                    status: 403,
+                    headers: { "Content-Type": "application/json", ...corsHeaders() },
+                });
+            }
         }
 
         // Handle spaces/special chars in the target URL
