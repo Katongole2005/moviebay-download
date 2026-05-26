@@ -91,39 +91,41 @@ export default {
         }
 
         // ── Secure Token Decryption ──────────────────────────────────────────
-        if (!token) {
-            return new Response(JSON.stringify({ error: "Missing secure token. Raw URL requests are not allowed." }), {
-                status: 403,
-                headers: { "Content-Type": "application/json", ...corsHeaders() },
-            });
-        }
+        if (!isSizeRequest) {
+            if (!token) {
+                return new Response(JSON.stringify({ error: "Missing secure token. Raw URL requests are not allowed." }), {
+                    status: 403,
+                    headers: { "Content-Type": "application/json", ...corsHeaders() },
+                });
+            }
 
-        const secret = env.ENCRYPTION_KEY;
-        if (!secret) {
-            return new Response(JSON.stringify({ error: "Encryption key not configured on worker" }), {
-                status: 500,
-                headers: { "Content-Type": "application/json", ...corsHeaders() },
-            });
-        }
+            const secret = env.ENCRYPTION_KEY;
+            if (!secret) {
+                return new Response(JSON.stringify({ error: "Encryption key not configured on worker" }), {
+                    status: 500,
+                    headers: { "Content-Type": "application/json", ...corsHeaders() },
+                });
+            }
 
-        const decrypted = await decryptToken(token, secret);
-        if (!decrypted) {
-            return new Response(JSON.stringify({ error: "Invalid or tampered token" }), {
-                status: 403,
-                headers: { "Content-Type": "application/json", ...corsHeaders() },
-            });
-        }
+            const decrypted = await decryptToken(token, secret);
+            if (!decrypted) {
+                return new Response(JSON.stringify({ error: "Invalid or tampered token" }), {
+                    status: 403,
+                    headers: { "Content-Type": "application/json", ...corsHeaders() },
+                });
+            }
 
-        // Expiration Check
-        if (decrypted.e < Date.now()) {
-            return new Response(JSON.stringify({ error: "Link expired" }), {
-                status: 403,
-                headers: { "Content-Type": "application/json", ...corsHeaders() },
-            });
-        }
+            // Expiration Check
+            if (decrypted.e < Date.now()) {
+                return new Response(JSON.stringify({ error: "Link expired" }), {
+                    status: 403,
+                    headers: { "Content-Type": "application/json", ...corsHeaders() },
+                });
+            }
 
-        targetUrl = decrypted.u;
-        if (decrypted.t) filename = decrypted.t;
+            targetUrl = decrypted.u;
+            if (decrypted.t) filename = decrypted.t;
+        }
 
         // Handle spaces/special chars in the target URL
         if (targetUrl && (targetUrl.includes(" ") || /[^a-z0-9:/?&.=%[\]()-]/i.test(targetUrl))) {
@@ -140,7 +142,7 @@ export default {
 
         // Basic validation
         if (!targetUrl) {
-            return new Response(JSON.stringify({ error: "Failed to extract source URL from token" }), {
+            return new Response(JSON.stringify({ error: isSizeRequest ? "Missing target URL" : "Failed to extract source URL from token" }), {
                 status: 400,
                 headers: { "Content-Type": "application/json", ...corsHeaders() },
             });
