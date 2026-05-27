@@ -44,53 +44,8 @@ export default {
         const isPlay = searchParams.get("play") === "1";
         const isSizeRequest = searchParams.get("size") === "1";
 
-        // ── Hotlink Protection (CORS/Referer Check) ──────────────────────────
-        const origin = request.headers.get("Origin") || "";
-        const referer = request.headers.get("Referer") || "";
-        
-        // Allowed domains for playback/download
-        const allowedDomains = [
-            "s-u.in",
-            "www.s-u.in",
-            "localhost",
-            "127.0.0.1",
-            "moviebay.vercel.app" // In case you use the vercel domain
-        ];
-
-        const isAllowedOrigin = (urlStr) => {
-            if (!urlStr) return false;
-            try {
-                const url = new URL(urlStr);
-                return allowedDomains.some(domain => 
-                    url.hostname === domain || url.hostname.endsWith(`.${domain}`)
-                );
-            } catch (e) {
-                return false;
-            }
-        };
-
-        const hasValidOrigin = isAllowedOrigin(origin);
-        const hasValidReferer = isAllowedOrigin(referer);
-        const isSecFetchSiteSameOrigin = request.headers.get("Sec-Fetch-Site") === "same-origin" || request.headers.get("Sec-Fetch-Site") === "same-site";
-
-        // If it's a cross-origin request (like from an unauthorized site embedding the video),
-        // we block it if it doesn't match our allowed domains.
-        if (origin || referer) {
-            if (!hasValidOrigin && !hasValidReferer) {
-                return new Response(JSON.stringify({ error: "Hotlinking restricted. Please watch on the official site." }), {
-                    status: 403,
-                    headers: { "Content-Type": "application/json", ...corsHeaders() },
-                });
-            }
-        } else {
-            // Strictly block requests without an origin or referer (prevents direct link sharing even for downloads).
-            return new Response(JSON.stringify({ error: "Direct access disabled. Please access via the official site." }), {
-                status: 403,
-                headers: { "Content-Type": "application/json", ...corsHeaders() },
-            });
-        }
-
-        // ── Secure Token Decryption ──────────────────────────────────────────
+        // ── Secure Token Decryption & Verification ──────────────────────────
+        let isTokenAuthorized = false;
         if (token) {
             const secret = env.ENCRYPTION_KEY;
             if (!secret) {
@@ -118,14 +73,54 @@ export default {
 
             targetUrl = decrypted.u;
             if (decrypted.t) filename = decrypted.t;
-        } else {
-            // No token provided.
-            // If it is NOT a size request, strictly block raw URL access.
-            if (!isSizeRequest) {
-                return new Response(JSON.stringify({ error: "Missing secure token. Raw URL requests are not allowed." }), {
-                    status: 403,
-                    headers: { "Content-Type": "application/json", ...corsHeaders() },
-                });
+            isTokenAuthorized = true;
+        }
+
+        // ── Hotlink Protection (CORS/Referer Check) ──────────────────────────
+        // Skip hotlink checks if the request has been fully authorized by a secure token.
+        if (!isTokenAuthorized) {
+            const origin = request.headers.get("Origin") || "";
+            const referer = request.headers.get("Referer") || "";
+            
+            // Allowed domains for playback/download
+            const allowedDomains = [
+                "s-u.in",
+                "www.s-u.in",
+                "localhost",
+                "127.0.0.1",
+                "moviebay.vercel.app" // In case you use the vercel domain
+            ];
+
+            const isAllowedOrigin = (urlStr) => {
+                if (!urlStr) return false;
+                try {
+                    const url = new URL(urlStr);
+                    return allowedDomains.some(domain => 
+                        url.hostname === domain || url.hostname.endsWith(`.${domain}`)
+                    );
+                } catch (e) {
+                    return false;
+                }
+            };
+
+            const hasValidOrigin = isAllowedOrigin(origin);
+            const hasValidReferer = isAllowedOrigin(referer);
+
+            if (origin || referer) {
+                if (!hasValidOrigin && !hasValidReferer) {
+                    return new Response(JSON.stringify({ error: "Hotlinking restricted. Please watch on the official site." }), {
+                        status: 403,
+                        headers: { "Content-Type": "application/json", ...corsHeaders() },
+                    });
+                }
+            } else {
+                // Strictly block direct raw access if it's not a size request
+                if (!isSizeRequest) {
+                    return new Response(JSON.stringify({ error: "Direct access disabled or missing secure token. Please watch on the official site." }), {
+                        status: 403,
+                        headers: { "Content-Type": "application/json", ...corsHeaders() },
+                    });
+                }
             }
         }
 
