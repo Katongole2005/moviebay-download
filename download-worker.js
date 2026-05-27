@@ -194,13 +194,17 @@ export default {
         // ── Fetch from origin ──────────────────────────────────────────────────
         let originResponse;
         try {
-            // Append a stable cache-buster query parameter derived from the filename.
-            // This keeps the subrequest URL identical across all range requests of the same movie session,
-            // enabling the browser and CDN to pipeline and cache range queries correctly for high-performance FHD playback.
-            const filenamePart = targetUrl.split("/").pop() || "video";
-            const stableKey = filenamePart.replace(/[^a-zA-Z0-9]/g, "").slice(-24);
-            const cb = `_cb=${stableKey}`;
-            const busterUrl = targetUrl.includes("?") ? `${targetUrl}&${cb}` : `${targetUrl}?${cb}`;
+            // Only append the stable cache-buster to direct CDN/static video files and not dynamic PHP download scripts.
+            // Cloudflare Edge Cache does not cache .php files by default, so we don't need a cache buster,
+            // and dynamic PHP downloader scripts (like downloadmp4.php) often throw a 500 error if they receive unknown query params.
+            const isDynamicScript = /\.php/i.test(targetUrl) || targetUrl.includes("downloadmp4.php");
+            let busterUrl = targetUrl;
+            if (!isDynamicScript) {
+                const filenamePart = targetUrl.split("/").pop() || "video";
+                const stableKey = filenamePart.replace(/[^a-zA-Z0-9]/g, "").slice(-24);
+                const cb = `_cb=${stableKey}`;
+                busterUrl = targetUrl.includes("?") ? `${targetUrl}&${cb}` : `${targetUrl}?${cb}`;
+            }
 
             originResponse = await fetch(busterUrl, {
                 method: (request.method === "HEAD" || isSizeRequest) ? "HEAD" : "GET",
