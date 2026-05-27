@@ -91,7 +91,11 @@ export default {
 
         // ── Hotlink Protection (CORS/Referer Check) ──────────────────────────
         // Skip hotlink checks if the request has been fully authorized by a secure token.
-        if (!isTokenAuthorized) {
+        // We also whitelist native VLC / libvlc media player requests to allow direct external streaming.
+        const userAgent = request.headers.get("User-Agent") || "";
+        const isVlcPlayer = /vlc|libvlc\/|xbmc/i.test(userAgent);
+        
+        if (!isTokenAuthorized && !isVlcPlayer) {
             const origin = request.headers.get("Origin") || "";
             const referer = request.headers.get("Referer") || "";
             
