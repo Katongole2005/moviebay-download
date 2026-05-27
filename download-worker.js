@@ -181,9 +181,16 @@ export default {
         // Try to be more convincing to origin servers
         try {
             const originUrl = new URL(targetUrl);
-            const targetOrigin = originUrl.origin;
+            let targetOrigin = originUrl.origin;
             
-            // For BunnyCDN and similar, matching the origin is usually enough
+            // For mobifliks and zflix pulls (which might be hosted on .info or .xyz CDNs but locked to the main .com referrer),
+            // we MUST override Referer/Origin to the main .com site domain to pass hotlinking checks.
+            if (/mobifliks/i.test(targetOrigin)) {
+                targetOrigin = "https://www.mobifliks.com";
+            } else if (/zflix/i.test(targetOrigin)) {
+                targetOrigin = "https://zflix.com";
+            }
+            
             requestHeaders.set("Referer", targetOrigin + "/");
             requestHeaders.set("Origin", targetOrigin);
         } catch (e) {
