@@ -194,9 +194,12 @@ export default {
         // ── Fetch from origin ──────────────────────────────────────────────────
         let originResponse;
         try {
-            // Append a cache-buster query parameter to ensure Cloudflare edge cache bypass
-            // and preserve Range headers for streaming without throwing platform TypeErrors.
-            const cb = `_cb=${Date.now()}`;
+            // Append a stable cache-buster query parameter derived from the filename.
+            // This keeps the subrequest URL identical across all range requests of the same movie session,
+            // enabling the browser and CDN to pipeline and cache range queries correctly for high-performance FHD playback.
+            const filenamePart = targetUrl.split("/").pop() || "video";
+            const stableKey = filenamePart.replace(/[^a-zA-Z0-9]/g, "").slice(-24);
+            const cb = `_cb=${stableKey}`;
             const busterUrl = targetUrl.includes("?") ? `${targetUrl}&${cb}` : `${targetUrl}?${cb}`;
 
             originResponse = await fetch(busterUrl, {
