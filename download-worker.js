@@ -198,6 +198,11 @@ export default {
                 method: (request.method === "HEAD" || isSizeRequest) ? "HEAD" : "GET",
                 headers: requestHeaders,
                 redirect: "follow",
+                cache: "no-store",
+                cf: {
+                    cacheTtl: 0,
+                    cacheEverything: false
+                }
             });
         } catch (err) {
             return new Response(
