@@ -194,15 +194,15 @@ export default {
         // ── Fetch from origin ──────────────────────────────────────────────────
         let originResponse;
         try {
-            originResponse = await fetch(targetUrl, {
+            // Append a cache-buster query parameter to ensure Cloudflare edge cache bypass
+            // and preserve Range headers for streaming without throwing platform TypeErrors.
+            const cb = `_cb=${Date.now()}`;
+            const busterUrl = targetUrl.includes("?") ? `${targetUrl}&${cb}` : `${targetUrl}?${cb}`;
+
+            originResponse = await fetch(busterUrl, {
                 method: (request.method === "HEAD" || isSizeRequest) ? "HEAD" : "GET",
                 headers: requestHeaders,
                 redirect: "follow",
-                cache: "no-store",
-                cf: {
-                    cacheTtl: 0,
-                    cacheEverything: false
-                }
             });
         } catch (err) {
             return new Response(
