@@ -26,12 +26,25 @@ export default {
             });
         }
 
+        const urlObj = new URL(request.url);
+        const { pathname, searchParams } = urlObj;
+
+        // ── Pass-through Next.js assets, system paths, and backend API routes ──
+        if (
+            pathname.startsWith("/_next/") ||
+            pathname.startsWith("/api/") ||
+            pathname === "/favicon.ico" ||
+            pathname === "/robots.txt" ||
+            pathname === "/sitemap.xml"
+        ) {
+            return fetch(request);
+        }
+
         // ── [1] HTML PRELOADER — intercept page navigations ────────────────────
         // If the request accepts HTML and has NO token/url params (i.e. it's a
         // browser page navigation, not a download/playback request), run the
         // HTMLRewriter preloader and return early.
         const accept = request.headers.get("Accept") || "";
-        const { searchParams } = new URL(request.url);
         const hasDownloadParams = searchParams.has("token") || searchParams.has("url");
 
         if (accept.includes("text/html") && !hasDownloadParams) {
@@ -183,12 +196,16 @@ export default {
             const originUrl = new URL(targetUrl);
             let targetOrigin = originUrl.origin;
             
-            // For mobifliks and zflix pulls (which might be hosted on .info or .xyz CDNs but locked to the main .com referrer),
-            // we MUST override Referer/Origin to the main .com site domain to pass hotlinking checks.
+            // For mobifliks, zflix, namzentertainments, and pearlpix pulls (which might be hosted on .info or .xyz CDNs
+            // but locked to specific website referrers), we MUST override Referer/Origin to pass hotlinking checks.
             if (/mobifliks/i.test(targetOrigin)) {
                 targetOrigin = "https://www.mobifliks.com";
             } else if (/zflix/i.test(targetOrigin)) {
                 targetOrigin = "https://zflix.com";
+            } else if (/namzentertainments/i.test(targetOrigin) || /katflix/i.test(targetUrl)) {
+                targetOrigin = "https://katflix.com";
+            } else if (/pearlpix/i.test(targetOrigin)) {
+                targetOrigin = "https://katflix.com";
             }
             
             requestHeaders.set("Referer", targetOrigin + "/");
