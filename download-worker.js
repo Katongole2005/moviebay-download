@@ -309,7 +309,9 @@ export default {
         // Security headers
         responseHeaders.set("X-Content-Type-Options", "nosniff");
 
-        return new Response(originResponse.body, { 
+        const responseBody = request.method === "HEAD" ? null : originResponse.body;
+
+        return new Response(responseBody, { 
             status: originResponse.status, 
             headers: responseHeaders 
         });
