@@ -62,31 +62,25 @@ export default {
         if (token) {
             const secret = env.ENCRYPTION_KEY;
             if (!secret) {
-                return new Response(JSON.stringify({ error: "Encryption key not configured on worker" }), {
-                    status: 500,
-                    headers: { "Content-Type": "application/json", ...corsHeaders() },
-                });
+                if (!targetUrl) {
+                    return new Response(JSON.stringify({ error: "Encryption key not configured on worker" }), {
+                        status: 500,
+                        headers: { "Content-Type": "application/json", ...corsHeaders() },
+                    });
+                }
+            } else {
+                const decrypted = await decryptToken(token, secret);
+                if (decrypted && decrypted.e >= Date.now()) {
+                    targetUrl = decrypted.u;
+                    if (decrypted.t) filename = decrypted.t;
+                    isTokenAuthorized = true;
+                } else if (!targetUrl) {
+                    return new Response(JSON.stringify({ error: "Invalid, expired, or tampered token" }), {
+                        status: 403,
+                        headers: { "Content-Type": "application/json", ...corsHeaders() },
+                    });
+                }
             }
-
-            const decrypted = await decryptToken(token, secret);
-            if (!decrypted) {
-                return new Response(JSON.stringify({ error: "Invalid or tampered token" }), {
-                    status: 403,
-                    headers: { "Content-Type": "application/json", ...corsHeaders() },
-                });
-            }
-
-            // Expiration Check
-            if (decrypted.e < Date.now()) {
-                return new Response(JSON.stringify({ error: "Link expired" }), {
-                    status: 403,
-                    headers: { "Content-Type": "application/json", ...corsHeaders() },
-                });
-            }
-
-            targetUrl = decrypted.u;
-            if (decrypted.t) filename = decrypted.t;
-            isTokenAuthorized = true;
         }
 
         // ── Hotlink Protection (CORS/Referer Check) ──────────────────────────
@@ -99,13 +93,21 @@ export default {
             const origin = request.headers.get("Origin") || "";
             const referer = request.headers.get("Referer") || "";
             
-            // Allowed domains for playback/download
+            // Allowed domains for playback/download.
+            // Add extra production domains in Cloudflare as ALLOWED_DOMAINS="example.com,www.example.com".
+            const configuredDomains = (env.ALLOWED_DOMAINS || "")
+                .split(",")
+                .map(domain => domain.trim())
+                .filter(Boolean);
             const allowedDomains = [
                 "s-u.in",
                 "www.s-u.in",
+                "moviebay.ug",
+                "www.moviebay.ug",
                 "localhost",
                 "127.0.0.1",
-                "moviebay.vercel.app" // In case you use the vercel domain
+                "moviebay.vercel.app",
+                ...configuredDomains,
             ];
 
             const isAllowedOrigin = (urlStr) => {
