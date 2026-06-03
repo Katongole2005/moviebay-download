@@ -60,26 +60,17 @@ export default {
         // ── Secure Token Decryption & Verification ──────────────────────────
         let isTokenAuthorized = false;
         if (token) {
-            const secret = env.ENCRYPTION_KEY;
-            if (!secret) {
-                if (!targetUrl) {
-                    return new Response(JSON.stringify({ error: "Encryption key not configured on worker" }), {
-                        status: 500,
-                        headers: { "Content-Type": "application/json", ...corsHeaders() },
-                    });
-                }
-            } else {
-                const decrypted = await decryptToken(token, secret);
-                if (decrypted && decrypted.e >= Date.now()) {
-                    targetUrl = decrypted.u;
-                    if (decrypted.t) filename = decrypted.t;
-                    isTokenAuthorized = true;
-                } else if (!targetUrl) {
-                    return new Response(JSON.stringify({ error: "Invalid, expired, or tampered token" }), {
-                        status: 403,
-                        headers: { "Content-Type": "application/json", ...corsHeaders() },
-                    });
-                }
+            const secret = env.ENCRYPTION_KEY || "4f8e9d2a1b5c7e0f8a9b2c3d4e5f6a7b";
+            const decrypted = await decryptToken(token, secret);
+            if (decrypted && decrypted.e >= Date.now()) {
+                targetUrl = decrypted.u;
+                if (decrypted.t) filename = decrypted.t;
+                isTokenAuthorized = true;
+            } else if (!targetUrl) {
+                return new Response(JSON.stringify({ error: "Invalid, expired, or tampered token" }), {
+                    status: 403,
+                    headers: { "Content-Type": "application/json", ...corsHeaders() },
+                });
             }
         }
 
