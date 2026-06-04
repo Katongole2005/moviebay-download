@@ -79,11 +79,11 @@ export default {
         // We also whitelist native VLC / libvlc media player requests to allow direct external streaming.
         const userAgent = request.headers.get("User-Agent") || "";
         const isVlcPlayer = /vlc|libvlc\/|xbmc/i.test(userAgent);
-        
+
         if (!isTokenAuthorized && !isVlcPlayer) {
             const origin = request.headers.get("Origin") || "";
             const referer = request.headers.get("Referer") || "";
-            
+
             // Allowed domains for playback/download.
             // Add extra production domains in Cloudflare as ALLOWED_DOMAINS="example.com,www.example.com".
             const configuredDomains = (env.ALLOWED_DOMAINS || "")
@@ -93,11 +93,9 @@ export default {
             const allowedDomains = [
                 "s-u.in",
                 "www.s-u.in",
-                "moviebay.ug",
-                "www.moviebay.ug",
                 "localhost",
                 "127.0.0.1",
-                "moviebay.vercel.app",
+                "https://project-lovable-app-eta.vercel.app/",
                 ...configuredDomains,
             ];
 
@@ -105,7 +103,7 @@ export default {
                 if (!urlStr) return false;
                 try {
                     const url = new URL(urlStr);
-                    return allowedDomains.some(domain => 
+                    return allowedDomains.some(domain =>
                         url.hostname === domain || url.hostname.endsWith(`.${domain}`)
                     );
                 } catch (e) {
@@ -173,7 +171,7 @@ export default {
 
         // ── Forward request headers (especially Range for streaming) ───────────
         const requestHeaders = new Headers();
-        
+
         // Pass essential headers through
         const passHeaders = ["User-Agent", "Accept", "Accept-Language", "Range"];
         for (const h of passHeaders) {
@@ -181,7 +179,7 @@ export default {
                 requestHeaders.set(h, request.headers.get(h));
             }
         }
-        
+
         requestHeaders.set("Accept-Encoding", "identity");
 
         if (!requestHeaders.has("User-Agent")) {
@@ -192,7 +190,7 @@ export default {
         try {
             const originUrl = new URL(targetUrl);
             let targetOrigin = originUrl.origin;
-            
+
             // For mobifliks, zflix, namzentertainments, and pearlpix pulls (which might be hosted on .info or .xyz CDNs
             // but locked to specific website referrers), we MUST override Referer/Origin to pass hotlinking checks.
             if (/mobifliks/i.test(targetOrigin)) {
@@ -204,7 +202,7 @@ export default {
             } else if (/pearlpix/i.test(targetOrigin)) {
                 targetOrigin = "https://katflix.com";
             }
-            
+
             requestHeaders.set("Referer", targetOrigin + "/");
             requestHeaders.set("Origin", targetOrigin);
         } catch (e) {
@@ -268,10 +266,10 @@ export default {
         // ── Re-stream with appropriate headers ────────────────────────────────
         const isDownload = searchParams.get("download") === "1";
         const forcePlay = isPlay && !isDownload;
-        
+
         let contentType = originResponse.headers.get("content-type");
         const lowerUrl = targetUrl.toLowerCase();
-        
+
         // Smarter Content-Type detection
         if (lowerUrl.endsWith(".mp4") || lowerUrl.endsWith(".m4v")) {
             contentType = "video/mp4";
@@ -308,9 +306,9 @@ export default {
 
         const responseBody = request.method === "HEAD" ? null : originResponse.body;
 
-        return new Response(responseBody, { 
-            status: originResponse.status, 
-            headers: responseHeaders 
+        return new Response(responseBody, {
+            status: originResponse.status,
+            headers: responseHeaders
         });
     },
 };
@@ -323,7 +321,7 @@ async function decryptToken(token, secret) {
         // Restore Base64 padding if removed by URL-safe conversion
         const b64 = token.replace(/-/g, '+').replace(/_/g, '/');
         const [ivB64, encB64] = b64.split('.');
-        
+
         if (!ivB64 || !encB64) return null;
 
         const addPadding = (str) => str.padEnd(str.length + (4 - str.length % 4) % 4, '=');
@@ -333,7 +331,7 @@ async function decryptToken(token, secret) {
 
         const encoder = new TextEncoder();
         const keyBytes = encoder.encode(secret.padEnd(32, '0').slice(0, 32));
-        
+
         const keyMaterial = await crypto.subtle.importKey(
             "raw",
             keyBytes,
@@ -386,8 +384,8 @@ async function handleHtmlPreloader(request) {
     }
 
     // Read the custom headers emitted by Next.js proxy.ts
-    const heroImageUrl    = originResponse.headers.get("X-Preload-Hero");
-    const heroPosterUrl   = originResponse.headers.get("X-Preload-Hero-Poster");
+    const heroImageUrl = originResponse.headers.get("X-Preload-Hero");
+    const heroPosterUrl = originResponse.headers.get("X-Preload-Hero-Poster");
     const preconnectHosts = originResponse.headers.get("X-Preconnect-Hosts");
 
     // Nothing to inject? Serve as-is.
@@ -415,7 +413,7 @@ async function handleHtmlPreloader(request) {
                             { html: true }
                         );
                     }
-                } catch (_) {}
+                } catch (_) { }
             }
 
             // 2. Preload for hero poster / mobile fallback
@@ -425,7 +423,7 @@ async function handleHtmlPreloader(request) {
                         `<link rel="preload" as="image" href="${heroPosterUrl}">`,
                         { html: true }
                     );
-                } catch (_) {}
+                } catch (_) { }
             }
 
             // 3. Preconnect for all CDN / API hosts
@@ -438,7 +436,7 @@ async function handleHtmlPreloader(request) {
                             `<link rel="preconnect" href="${host}" crossorigin>`,
                             { html: true }
                         );
-                    } catch (_) {}
+                    } catch (_) { }
                 }
             }
         },

@@ -1,6 +1,6 @@
 # moviebay-download
 
-Cloudflare Worker that acts as a **download rename proxy** for [Moviebay](https://moviebay.ug).
+Cloudflare Worker that acts as a **download rename proxy** for [Moviebay](https://s-u.in).
 
 When a user taps Download, the worker fetches the video from the origin server and re-streams it with a `Content-Disposition` header that forces the browser to save the file with the **movie title as the filename** — instead of a hashed CDN name.
 
